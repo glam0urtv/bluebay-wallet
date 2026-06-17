@@ -10,4 +10,4 @@ workflows:
       - flutter pub get
       - flutter build ipa --release --no-codesign --export-method=ad-hoc
     artifacts:
-      - build/ios/ipa/*.ipa
+      - mobile/build/ios/ipa/*.ipa
