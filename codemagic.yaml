@@ -5,12 +5,9 @@ workflows:
       flutter: stable
       xcode: latest
       cocoapods: default
+    working_directory: mobile
     scripts:
       - flutter pub get
       - flutter build ios --release --no-codesign
     artifacts:
       - build/ios/iphoneos/Runner.app
-    publishing:
-      email:
-        recipients:
-          - your-email@example.com
