@@ -1,0 +1,16 @@
+workflows:
+  bluebay-ios:
+    name: BlueBay Wallet iOS
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - flutter pub get
+      - flutter build ios --release --no-codesign
+    artifacts:
+      - build/ios/iphoneos/Runner.app
+    publishing:
+      email:
+        recipients:
+          - your-email@example.com

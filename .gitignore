@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.next/
+.env
+*.db
+*.db-journal
+.expo/
+android/app/build/
+ios/Pods/
+.dart_tool/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+nul
