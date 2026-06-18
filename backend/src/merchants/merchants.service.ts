@@ -15,6 +15,7 @@ export class MerchantsService {
     businessName: string,
     businessCategory?: string,
     conversionRate = 1.0,
+    tokenRates?: { tokenId: string; conversionRate: number }[],
   ) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
@@ -23,29 +24,20 @@ export class MerchantsService {
     if (existing) throw new ConflictException('User is already a merchant');
 
     if (user.role !== 'merchant') {
-      await this.prisma.user.update({
-        where: { id: userId },
-        data: { role: 'merchant' },
-      });
+      await this.prisma.user.update({ where: { id: userId }, data: { role: 'merchant' } });
     }
 
     const merchant = await this.prisma.merchant.create({
       data: {
-        userId,
-        businessName,
-        businessCategory,
-        conversionRate,
+        userId, businessName, businessCategory, conversionRate,
+        tokenRates: tokenRates ? {
+          create: tokenRates.map(tr => ({ tokenId: tr.tokenId, conversionRate: tr.conversionRate })),
+        } : undefined,
       },
     });
 
     await this.prisma.auditLog.create({
-      data: {
-        userId,
-        action: 'MERCHANT_CREATED',
-        entity: 'Merchant',
-        entityId: merchant.id,
-        details: `Merchant ${businessName} registered`,
-      },
+      data: { userId, action: 'MERCHANT_CREATED', entity: 'Merchant', entityId: merchant.id, details: `Merchant ${businessName} registered` },
     });
 
     return merchant;
@@ -57,16 +49,8 @@ export class MerchantsService {
         skip: (page - 1) * limit,
         take: limit,
         include: {
-          user: {
-            select: {
-              id: true,
-              fullName: true,
-              phone: true,
-              email: true,
-              isActive: true,
-              wallet: { select: { balance: true } },
-            },
-          },
+          user: { select: { id: true, fullName: true, phone: true, email: true, isActive: true, wallet: { select: { balance: true } } } },
+          tokenRates: { include: { token: { select: { id: true, name: true, symbol: true } } } },
         },
         orderBy: { createdAt: 'desc' },
       }),
@@ -81,6 +65,7 @@ export class MerchantsService {
       where: { isActive: true },
       include: {
         user: { select: { id: true, fullName: true, phone: true, wallet: { select: { balance: true } } } },
+        tokenRates: { include: { token: { select: { id: true, name: true, symbol: true } } } },
       },
       orderBy: { businessName: 'asc' },
     });
@@ -151,7 +136,7 @@ export class MerchantsService {
     });
   }
 
-  async updateMerchant(id: string, dto: { businessName?: string; businessCategory?: string; conversionRate?: number }) {
+  async updateMerchant(id: string, dto: { businessName?: string; businessCategory?: string; conversionRate?: number; tokenRates?: { tokenId: string; conversionRate: number }[] }) {
     const merchant = await this.prisma.merchant.findUnique({ where: { id } });
     if (!merchant) throw new NotFoundException('Merchant not found');
 
@@ -160,7 +145,17 @@ export class MerchantsService {
     if (dto.businessCategory !== undefined) data.businessCategory = dto.businessCategory || null;
     if (dto.conversionRate !== undefined) data.conversionRate = dto.conversionRate;
 
-    return this.prisma.merchant.update({ where: { id }, data });
+    // Update per-token rates: delete existing, create new ones
+    if (dto.tokenRates) {
+      await this.prisma.merchantTokenRate.deleteMany({ where: { merchantId: id } });
+      await this.prisma.merchantTokenRate.createMany({
+        data: dto.tokenRates.map(tr => ({ merchantId: id, tokenId: tr.tokenId, conversionRate: tr.conversionRate })),
+      });
+    }
+
+    return this.prisma.merchant.update({ where: { id }, data,
+      include: { tokenRates: { include: { token: { select: { id: true, name: true, symbol: true } } } } },
+    });
   }
 
   async deleteMerchant(id: string, adminId: string) {

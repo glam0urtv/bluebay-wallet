@@ -20,4 +20,10 @@ export class P2PTransferDto {
   @IsOptional()
   @IsString()
   note?: string;
+
+  @ApiPropertyOptional({ example: 'uuid-of-token' })
+  @IsOptional()
+  @IsString()
+  @IsUUID('4')
+  tokenId?: string;
 }

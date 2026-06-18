@@ -58,11 +58,17 @@ class _MerchantListScreenState extends State<MerchantListScreen> {
                       child: InkWell(
                         borderRadius: BorderRadius.circular(14),
                         onTap: () {
+                          final tokenRates = (m['tokenRates'] as List<dynamic>?) ?? [];
+                          final defaultRate = (m['conversionRate'] as num?)?.toDouble() ?? 1.0;
                           Navigator.pop(context, {
                             'merchantId': merchantId,
                             'userId': userId,
                             'name': name,
-                            'rate': rate,
+                            'rate': defaultRate,
+                            'tokenRates': tokenRates.map((tr) => {
+                              'tokenId': tr['tokenId'] as String,
+                              'conversionRate': (tr['conversionRate'] as num).toDouble(),
+                            }).toList(),
                           });
                         },
                         child: Padding(
@@ -87,8 +93,13 @@ class _MerchantListScreenState extends State<MerchantListScreen> {
                               Column(
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
-                                  const Text('1 BB =', style: TextStyle(color: Colors.grey, fontSize: 11)),
-                                  Text('EUR ${rate.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                                  if ((m['tokenRates'] as List<dynamic>?)?.isNotEmpty == true)
+                                    ...((m['tokenRates'] as List<dynamic>?)!).take(3).map((tr) => Text(
+                                      '1 ${tr['token']?['symbol'] ?? '?'} = EUR ${(tr['conversionRate'] as num?)?.toStringAsFixed(2) ?? '1.00'}',
+                                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+                                    )).toList()
+                                  else
+                                    Text('1 BB = EUR ${rate.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
                                 ],
                               ),
                               const SizedBox(width: 8),

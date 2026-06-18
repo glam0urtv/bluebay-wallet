@@ -53,6 +53,7 @@ export class TransactionsService {
           fromWalletId: senderWallet.id,
           toWalletId: receiverWallet.id,
           amount: dto.amount,
+          tokenId: dto.tokenId,
           type: 'p2p',
           status: 'completed',
           note: dto.note,
@@ -62,19 +63,30 @@ export class TransactionsService {
 
       await tx.wallet.update({
         where: { id: senderWallet.id },
-        data: {
-          balance: { decrement: dto.amount },
-          version: { increment: 1 },
-        },
+        data: { balance: { decrement: dto.amount }, version: { increment: 1 } },
       });
 
       await tx.wallet.update({
         where: { id: receiverWallet.id },
-        data: {
-          balance: { increment: dto.amount },
-          version: { increment: 1 },
-        },
+        data: { balance: { increment: dto.amount }, version: { increment: 1 } },
       });
+
+      // Update per-token balances
+      if (dto.tokenId) {
+        const token = await tx.token.findUnique({ where: { id: dto.tokenId } });
+        if (token) {
+          await tx.walletBalance.upsert({
+            where: { walletId_tokenId: { walletId: senderWallet.id, tokenId: dto.tokenId } },
+            create: { walletId: senderWallet.id, tokenId: dto.tokenId, balance: -dto.amount },
+            update: { balance: { decrement: dto.amount } },
+          });
+          await tx.walletBalance.upsert({
+            where: { walletId_tokenId: { walletId: receiverWallet.id, tokenId: dto.tokenId } },
+            create: { walletId: receiverWallet.id, tokenId: dto.tokenId, balance: dto.amount },
+            update: { balance: { increment: dto.amount } },
+          });
+        }
+      }
 
       return txn;
     });
@@ -142,6 +154,7 @@ export class TransactionsService {
           fromWalletId: senderWallet.id,
           toWalletId: merchantWallet.id,
           amount: dto.amount,
+          tokenId: dto.tokenId,
           type: 'p2m',
           status: 'completed',
           note: dto.note || `Payment to ${merchant.businessName}`,
@@ -151,19 +164,29 @@ export class TransactionsService {
 
       await tx.wallet.update({
         where: { id: senderWallet.id },
-        data: {
-          balance: { decrement: dto.amount },
-          version: { increment: 1 },
-        },
+        data: { balance: { decrement: dto.amount }, version: { increment: 1 } },
       });
 
       await tx.wallet.update({
         where: { id: merchantWallet.id },
-        data: {
-          balance: { increment: dto.amount },
-          version: { increment: 1 },
-        },
+        data: { balance: { increment: dto.amount }, version: { increment: 1 } },
       });
+
+      if (dto.tokenId) {
+        const token = await tx.token.findUnique({ where: { id: dto.tokenId } });
+        if (token) {
+          await tx.walletBalance.upsert({
+            where: { walletId_tokenId: { walletId: senderWallet.id, tokenId: dto.tokenId } },
+            create: { walletId: senderWallet.id, tokenId: dto.tokenId, balance: -dto.amount },
+            update: { balance: { decrement: dto.amount } },
+          });
+          await tx.walletBalance.upsert({
+            where: { walletId_tokenId: { walletId: merchantWallet.id, tokenId: dto.tokenId } },
+            create: { walletId: merchantWallet.id, tokenId: dto.tokenId, balance: dto.amount },
+            update: { balance: { increment: dto.amount } },
+          });
+        }
+      }
 
       return txn;
     });

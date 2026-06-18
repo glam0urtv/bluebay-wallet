@@ -13,6 +13,10 @@ export default function MerchantsPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ userId: '', businessName: '', businessCategory: '', conversionRate: '1.0' });
+  const [tokens, setTokens] = useState<any[]>([]);
+  const [tokenRates, setTokenRates] = useState<{tokenId: string; conversionRate: string}[]>([]);
+
+  useEffect(() => { api.get('/tokens?limit=100').then(d => setTokens(d.data || [])).catch(() => {}); }, []);
 
   const fetchMerchants = async (p: number) => {
     setLoading(true);
@@ -28,27 +32,34 @@ export default function MerchantsPage() {
 
   const resetForm = () => {
     setForm({ userId: '', businessName: '', businessCategory: '', conversionRate: '1.0' });
+    setTokenRates([]);
     setEditingId(null);
     setShowForm(false);
+  };
+
+  const addTokenRate = () => {
+    if (tokens.length === 0) return;
+    const existingIds = tokenRates.map(tr => tr.tokenId);
+    const available = tokens.find(t => !existingIds.includes(t.id));
+    if (available) setTokenRates([...tokenRates, { tokenId: available.id, conversionRate: '1.0' }]);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const body: any = {
+        businessName: form.businessName,
+        businessCategory: form.businessCategory || null,
+        conversionRate: parseFloat(form.conversionRate),
+        tokenRates: tokenRates.map(tr => ({ tokenId: tr.tokenId, conversionRate: parseFloat(tr.conversionRate) })),
+      };
+      if (!editingId) body.userId = form.userId;
+
       if (editingId) {
-        await api.patch(`/merchants/${editingId}`, {
-          businessName: form.businessName,
-          businessCategory: form.businessCategory || null,
-          conversionRate: parseFloat(form.conversionRate),
-        });
+        await api.patch(`/merchants/${editingId}`, body);
         toast.success('Merchant updated');
       } else {
-        await api.post('/merchants', {
-          userId: form.userId,
-          businessName: form.businessName,
-          businessCategory: form.businessCategory || undefined,
-          conversionRate: parseFloat(form.conversionRate),
-        });
+        await api.post('/merchants', body);
         toast.success('Merchant created');
       }
       resetForm();
@@ -58,11 +69,9 @@ export default function MerchantsPage() {
 
   const startEdit = (m: any) => {
     setForm({
-      userId: m.userId,
-      businessName: m.businessName,
-      businessCategory: m.businessCategory || '',
-      conversionRate: String(m.conversionRate),
+      userId: m.userId, businessName: m.businessName, businessCategory: m.businessCategory || '', conversionRate: String(m.conversionRate),
     });
+    setTokenRates((m.tokenRates || []).map((tr: any) => ({ tokenId: tr.tokenId, conversionRate: String(tr.conversionRate) })));
     setEditingId(m.id);
     setShowForm(true);
   };
@@ -116,10 +125,36 @@ export default function MerchantsPage() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">1 BB = EUR</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Default 1 BB = EUR</label>
               <input type="number" step="0.01" value={form.conversionRate} onChange={e => setForm({...form, conversionRate: e.target.value})}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary" />
             </div>
+          </div>
+
+          <div className="border-t pt-4">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-sm font-semibold">Per-Token Rates</h4>
+              <button type="button" onClick={addTokenRate} className="text-xs text-primary hover:underline">+ Add Token Rate</button>
+            </div>
+            {tokenRates.map((tr, i) => {
+              const token = tokens.find(t => t.id === tr.tokenId);
+              return (
+                <div key={i} className="flex gap-2 items-center mb-2">
+                  <select value={tr.tokenId} onChange={e => {
+                    const updated = [...tokenRates]; updated[i].tokenId = e.target.value; setTokenRates(updated);
+                  }} className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary">
+                    {tokens.map(t => <option key={t.id} value={t.id}>{t.name} ({t.symbol})</option>)}
+                  </select>
+                  <label className="text-xs text-gray-500">1 = EUR</label>
+                  <input type="number" step="0.01" value={tr.conversionRate} onChange={e => {
+                    const updated = [...tokenRates]; updated[i].conversionRate = e.target.value; setTokenRates(updated);
+                  }} className="w-24 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary" />
+                  <button type="button" onClick={() => setTokenRates(tokenRates.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-600">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              );
+            })}
           </div>
           <button type="submit" className="bg-primary text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-primary-700 flex items-center gap-1">
             <Check className="w-4 h-4" /> {editingId ? 'Update' : 'Create'}
@@ -132,23 +167,33 @@ export default function MerchantsPage() {
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50">
               <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Business</th>
-              <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Contact</th>
-              <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Category</th>
-              <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">1 BB = EUR</th>
+              <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Token Rates</th>
               <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Balance</th>
               <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
               <th className="text-right px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {loading ? <tr><td colSpan={7} className="px-6 py-8 text-center text-gray-400">Loading...</td></tr>
-            : merchants.length === 0 ? <tr><td colSpan={7} className="px-6 py-8 text-center text-gray-400">No merchants</td></tr>
+            {loading ? <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-400">Loading...</td></tr>
+            : merchants.length === 0 ? <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-400">No merchants</td></tr>
             : merchants.map((m) => (
                 <tr key={m.id} className="border-b border-gray-50 hover:bg-gray-50/50">
-                  <td className="px-6 py-4"><p className="font-medium">{m.businessName}</p></td>
-                  <td className="px-6 py-4 text-sm"><p>{m.user?.fullName}</p><p className="text-gray-400">{m.user?.phone}</p></td>
-                  <td className="px-6 py-4 text-sm">{m.businessCategory || '-'}</td>
-                  <td className="px-6 py-4 text-sm font-mono">{m.conversionRate}</td>
+                  <td className="px-6 py-4">
+                    <p className="font-medium">{m.businessName}</p>
+                    <p className="text-xs text-gray-400">{m.businessCategory || '—'}</p>
+                  </td>
+                  <td className="px-6 py-4 text-sm">
+                    <div className="flex flex-wrap gap-1">
+                      {(m.tokenRates || []).length > 0
+                        ? m.tokenRates.map((tr: any) => (
+                            <span key={tr.tokenId} className="inline-flex px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded text-xs font-mono">
+                              {tr.token?.symbol || '?'}=€{tr.conversionRate}
+                            </span>
+                          ))
+                        : <span className="text-gray-400 text-xs">No rates set</span>
+                      }
+                    </div>
+                  </td>
                   <td className="px-6 py-4 text-sm font-mono">{m.user?.wallet?.balance ?? 0} BB</td>
                   <td className="px-6 py-4">
                     <span className={`inline-flex w-2 h-2 rounded-full ${m.isActive ? 'bg-green-500' : 'bg-red-500'}`} />

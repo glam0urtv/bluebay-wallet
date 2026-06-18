@@ -75,6 +75,7 @@ model Token {
   admin        User          @relation(fields: [createdBy], references: [id])
   transactions Transaction[]
   balances     WalletBalance[]
+  merchantRates MerchantTokenRate[]
 
   @@index([symbol])
 }
@@ -157,8 +158,24 @@ model Merchant {
 
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   settlements Settlement[]
+  tokenRates  MerchantTokenRate[]
 
   @@index([userId])
+}
+
+model MerchantTokenRate {
+  id             String   @id @default(uuid())
+  merchantId     String
+  tokenId        String
+  conversionRate Float    @default(1.0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  token    Token    @relation(fields: [tokenId], references: [id])
+
+  @@unique([merchantId, tokenId])
+  @@index([merchantId])
 }
 
 model Settlement {

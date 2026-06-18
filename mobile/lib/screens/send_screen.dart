@@ -25,16 +25,26 @@ class _SendScreenState extends State<SendScreen> {
   bool _nfcAvailable = false;
   bool get _isLocked => widget.lockedMerchantId != null;
   bool _sendingNfc = false;
+  List<TokenBalance> _balances = [];
+  TokenBalance? _selectedToken;
 
   @override
   void initState() {
     super.initState();
     _checkNFC();
+    _loadBalances();
   }
 
   Future<void> _checkNFC() async {
     _nfcAvailable = await NFCService.isAvailable();
     if (mounted) setState(() {});
+  }
+
+  Future<void> _loadBalances() async {
+    try {
+      final b = await WalletService().getBalances();
+      if (mounted) setState(() { _balances = b; if (b.isNotEmpty && _selectedToken == null) _selectedToken = b[0]; });
+    } catch (_) {}
   }
 
   Future<void> _sendManual() async {
@@ -59,9 +69,15 @@ class _SendScreenState extends State<SendScreen> {
       final idempotencyKey = txService.generateIdempotencyKey();
 
       if (isMerchant) {
-        await walletService.sendP2M(merchantId: receiver, amount: amount, idempotencyKey: idempotencyKey, note: _noteController.text.isNotEmpty ? _noteController.text : null);
+        await walletService.sendP2M(merchantId: receiver, amount: amount, idempotencyKey: idempotencyKey,
+          note: _noteController.text.isNotEmpty ? _noteController.text : null,
+          tokenId: _selectedToken?.tokenId,
+        );
       } else {
-        await walletService.sendP2P(receiverId: receiver, amount: amount, idempotencyKey: idempotencyKey, note: _noteController.text.isNotEmpty ? _noteController.text : null);
+        await walletService.sendP2P(receiverId: receiver, amount: amount, idempotencyKey: idempotencyKey,
+          note: _noteController.text.isNotEmpty ? _noteController.text : null,
+          tokenId: _selectedToken?.tokenId,
+        );
       }
 
       if (mounted) {
@@ -170,6 +186,22 @@ class _SendScreenState extends State<SendScreen> {
             ),
             const SizedBox(height: 20),
           ],
+
+          if (_balances.length > 1)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: DropdownButtonFormField<TokenBalance>(
+                value: _selectedToken,
+                decoration: const InputDecoration(labelText: 'Select Token', prefixIcon: Icon(Icons.monetization_on)),
+                items: _balances.map((b) => DropdownMenuItem(value: b, child: Text('${b.symbol} — ${b.balance.toStringAsFixed(0)} ${b.symbol}'))).toList(),
+                onChanged: (v) => setState(() => _selectedToken = v),
+              ),
+            ),
+          if (_balances.length == 1 && _selectedToken != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text('${_selectedToken!.symbol}: ${_selectedToken!.balance.toStringAsFixed(0)} available', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+            ),
 
           TextField(
             controller: _amountController,

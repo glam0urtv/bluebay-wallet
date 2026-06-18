@@ -1,12 +1,24 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 
 export default function MintPage() {
-  const [form, setForm] = useState({ userId: '', amount: '', note: '' });
+  const [form, setForm] = useState({ userId: '', amount: '', note: '', tokenId: '' });
   const [loading, setLoading] = useState(false);
+  const [tokens, setTokens] = useState<any[]>([]);
+
+  useEffect(() => {
+    api.get('/tokens?limit=100').then(d => setTokens(d.data || [])).catch(() => {});
+  }, []);
+
+  // Auto-select first token if available
+  useEffect(() => {
+    if (tokens.length > 0 && !form.tokenId) {
+      setForm(f => ({ ...f, tokenId: tokens[0].id }));
+    }
+  }, [tokens]);
 
   const handleMint = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -17,14 +29,16 @@ export default function MintPage() {
     setLoading(true);
     try {
       const idempotencyKey = `admin-mint-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      const result = await api.post('/wallets/mint', {
+      await api.post('/wallets/mint', {
         userId: form.userId,
         amount: parseFloat(form.amount),
         note: form.note || undefined,
+        tokenId: form.tokenId || undefined,
         idempotencyKey,
       });
-      toast.success(`Minted ${form.amount} tokens successfully!`);
-      setForm({ userId: '', amount: '', note: '' });
+      const tokenName = tokens.find(t => t.id === form.tokenId)?.symbol || 'tokens';
+      toast.success(`Minted ${form.amount} ${tokenName} successfully!`);
+      setForm({ userId: '', amount: '', note: '', tokenId: tokens[0]?.id || '' });
     } catch (err: any) {
       toast.error(err.message || 'Mint failed');
     } finally {
@@ -39,6 +53,18 @@ export default function MintPage() {
 
       <div className="max-w-xl bg-white rounded-xl border border-gray-100 p-6">
         <form onSubmit={handleMint} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Token Type</label>
+            <select
+              value={form.tokenId}
+              onChange={(e) => setForm({ ...form, tokenId: e.target.value })}
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none"
+            >
+              {tokens.map(t => (
+                <option key={t.id} value={t.id}>{t.name} ({t.symbol})</option>
+              ))}
+            </select>
+          </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">User ID</label>
             <input

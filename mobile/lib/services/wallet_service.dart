@@ -46,10 +46,12 @@ class WalletService {
     required double amount,
     required String idempotencyKey,
     String? note,
+    String? tokenId,
   }) async {
     return _api.post('/transactions/p2p', {
       'receiverUserId': receiverId, 'amount': amount, 'idempotencyKey': idempotencyKey,
       if (note != null) 'note': note,
+      if (tokenId != null) 'tokenId': tokenId,
     });
   }
 
@@ -58,10 +60,12 @@ class WalletService {
     required double amount,
     required String idempotencyKey,
     String? note,
+    String? tokenId,
   }) async {
     return _api.post('/transactions/p2m', {
       'merchantUserId': merchantId, 'amount': amount, 'idempotencyKey': idempotencyKey,
       if (note != null) 'note': note,
+      if (tokenId != null) 'tokenId': tokenId,
     });
   }
 }

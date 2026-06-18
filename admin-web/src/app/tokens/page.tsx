@@ -99,6 +99,11 @@ export default function TokensPage() {
               <input type="text" value={form.description} onChange={e => setForm({...form, description: e.target.value})}
                 placeholder="Official loyalty token" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary" />
             </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Image URL (for coin display)</label>
+              <input type="text" value={form.iconUrl} onChange={e => setForm({...form, iconUrl: e.target.value})}
+                placeholder="https://example.com/token-image.jpg" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary" />
+            </div>
           </div>
           <button type="submit" className="bg-primary text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-primary-700 flex items-center gap-1">
             <Check className="w-4 h-4" /> {editingId ? 'Update' : 'Create'}

@@ -72,6 +72,12 @@ export default function UsersPage() {
     } catch (err: any) { toast.error(err.message); }
   };
 
+  const balancesStr = (u: any) => {
+    const b = u.wallet?.balances;
+    if (!b || b.length === 0) return '0 BB';
+    return b.map((x: any) => `${x.balance} ${x.token?.symbol || '?'}`).join(' | ');
+  };
+
   const copyId = (id: string) => {
     navigator.clipboard.writeText(id);
     toast.success('User ID copied!');
@@ -161,7 +167,7 @@ export default function UsersPage() {
                     <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
                       u.role === 'admin' ? 'bg-purple-50 text-purple-700' : u.role === 'merchant' ? 'bg-green-50 text-green-700' : 'bg-blue-50 text-blue-700'}`}>{u.role}</span>
                   </td>
-                  <td className="px-6 py-4 text-sm font-mono">{u.wallet?.balance ?? 0} BB</td>
+                  <td className="px-6 py-4 text-sm font-mono">{balancesStr(u)}</td>
                   <td className="px-6 py-4">
                     <span className={`inline-flex w-2 h-2 rounded-full ${u.isActive ? 'bg-green-500' : 'bg-red-500'}`} />
                     <span className="ml-2 text-sm">{u.isActive ? 'Active' : 'Inactive'}</span>

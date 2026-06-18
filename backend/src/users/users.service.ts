@@ -15,7 +15,15 @@ export class UsersService {
         where,
         skip,
         take: limit,
-        include: { wallet: true },
+        include: {
+          wallet: {
+            include: {
+              balances: {
+                include: { token: { select: { id: true, name: true, symbol: true, iconUrl: true } } },
+              },
+            },
+          },
+        },
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.user.count({ where }),
@@ -32,7 +40,16 @@ export class UsersService {
   async findById(id: string) {
     const user = await this.prisma.user.findUnique({
       where: { id },
-      include: { wallet: true, merchant: true },
+      include: {
+        wallet: {
+          include: {
+            balances: {
+              include: { token: { select: { id: true, name: true, symbol: true, iconUrl: true } } },
+            },
+          },
+        },
+        merchant: true,
+      },
     });
 
     if (!user) throw new NotFoundException('User not found');
