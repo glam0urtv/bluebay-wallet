@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io' show Platform;
 import 'package:flutter/services.dart';
 import 'package:nfc_manager/nfc_manager.dart';
 import 'package:flutter_nfc_kit/flutter_nfc_kit.dart' as nfcKit;
@@ -8,34 +9,36 @@ class NFCService {
   static bool _available = false;
 
   static Future<bool> isAvailable() async {
+    if (_available) return true;
     try {
-      final hce = await _channel.invokeMethod<bool>('isHceSupported');
-      _available = hce == true;
-      return _available;
-    } catch (_) {
-      try {
-        _available = await NfcManager.instance.isAvailable();
-        return _available;
-      } catch (_) {
-        _available = false;
-        return false;
+      if (Platform.isAndroid) {
+        final hce = await _channel.invokeMethod<bool>('isHceSupported');
+        if (hce == true) { _available = true; return true; }
       }
-    }
-  }
-
-  static Future<bool> isNfcEnabled() async {
-    try {
-      return await _channel.invokeMethod<bool>('isNfcEnabled') ?? false;
+      _available = await NfcManager.instance.isAvailable();
+      return _available;
     } catch (_) {
       return false;
     }
   }
 
+  static Future<bool> isNfcEnabled() async {
+    if (Platform.isAndroid) {
+      try {
+        return await _channel.invokeMethod<bool>('isNfcEnabled') ?? false;
+      } catch (_) {
+        return false;
+      }
+    }
+    // iOS: CoreNFC doesn't have an "enabled" check - just try to use it
+    return true;
+  }
+
   static Future<bool> startHce({required String nonce, required double amount}) async {
+    if (!Platform.isAndroid) return false;
     try {
       return await _channel.invokeMethod<bool>('startHce', {
-        'nonce': nonce,
-        'amount': amount,
+        'nonce': nonce, 'amount': amount,
       }) ?? false;
     } catch (_) {
       return false;
@@ -43,30 +46,37 @@ class NFCService {
   }
 
   static Future<void> stopHce() async {
+    if (!Platform.isAndroid) return;
     try { await _channel.invokeMethod('stopHce'); } catch (_) {}
   }
 
-  /// Read NFC tag / HCE - uses flutter_nfc_kit for better HCE support
+  /// Read NFC tag. On Android uses flutter_nfc_kit for HCE support.
+  /// On iOS uses nfc_manager (CoreNFC) for NDEF reading.
   static Future<String?> readNfcTag() async {
+    if (Platform.isAndroid) {
+      return _readAndroid();
+    } else {
+      return _readIOS();
+    }
+  }
+
+  static Future<String?> _readAndroid() async {
     try {
       final tag = await nfcKit.FlutterNfcKit.poll(timeout: const Duration(seconds: 25));
       if (tag == null) return null;
 
-      // Read NDEF records from any NFC tag
       final records = await nfcKit.FlutterNfcKit.readNDEFRecords();
       if (records != null && records.isNotEmpty) {
         for (final record in records) {
           if (record.payload is String) {
             final payload = record.payload as String;
             if (payload.startsWith('BB|')) return payload;
-            // Also try JSON
             final json = NFCService.decodeJsonPayload(payload);
             if (json != null && json['nonce'] != null) return payload;
           }
         }
       }
 
-      // Fallback: try to transceive raw data
       try {
         final rawData = await nfcKit.FlutterNfcKit.transceive('');
         if (rawData != null && rawData.isNotEmpty && rawData.startsWith('BB|')) {
@@ -75,9 +85,16 @@ class NFCService {
       } catch (_) {}
 
       return null;
-    } catch (_) {}
+    } catch (_) {
+      return _readFallback();
+    }
+  }
 
-    // Second fallback: nfc_manager
+  static Future<String?> _readIOS() async {
+    return _readFallback();
+  }
+
+  static Future<String?> _readFallback() async {
     String? result;
     try {
       await NfcManager.instance.startSession(
@@ -89,6 +106,10 @@ class NFCService {
               for (final record in msg.records) {
                 final payload = String.fromCharCodes(record.payload);
                 if (payload.startsWith('BB|')) result = payload;
+                else {
+                  final json = decodeJsonPayload(payload);
+                  if (json != null && json['nonce'] != null) result = payload;
+                }
               }
             }
           }

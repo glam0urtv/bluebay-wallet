@@ -1,5 +1,3 @@
-import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../services/transaction_service.dart';
@@ -14,77 +12,47 @@ class ReceiveScreen extends StatefulWidget {
   State<ReceiveScreen> createState() => _ReceiveScreenState();
 }
 
-class _ReceiveScreenState extends State<ReceiveScreen> with SingleTickerProviderStateMixin {
+class _ReceiveScreenState extends State<ReceiveScreen> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late TabController _tabController;
   bool _nfcAvailable = false;
   bool _nfcScanning = false;
   String? _nfcStatus;
   bool _qrScanning = false;
-  MobileScannerController? _scannerController;
+  late MobileScannerController _scannerController;
+  bool _cameraReady = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(_onTabChange);
+    _scannerController = MobileScannerController();
     _checkNFC();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    try {
+      if (state == AppLifecycleState.resumed) {
+        if (_tabController.index == 0) _scannerController.start();
+      } else {
+        _scannerController.stop();
+      }
+    } catch (_) {}
   }
 
   void _onTabChange() {
     if (_tabController.index == 0) {
-      _scannerController?.start();
+      try { _scannerController.start(); } catch (_) {}
     } else {
-      _scannerController?.stop();
+      try { _scannerController.stop(); } catch (_) {}
     }
   }
 
   Future<void> _checkNFC() async {
     _nfcAvailable = await NFCService.isAvailable();
     if (mounted) setState(() {});
-  }
-
-  Future<void> _startNFCScan() async {
-    setState(() { _nfcScanning = true; _nfcStatus = 'Hold phone near sender...'; });
-    try {
-      final data = await NFCService.readNfcTag();
-      if (data == null) {
-        setState(() { _nfcScanning = false; _nfcStatus = 'No tag detected. Try again.'; });
-        return;
-      }
-
-      final hcePayload = NFCService.parseHcePayload(data);
-      if (hcePayload != null) {
-        final nonce = hcePayload['nonce'] as String;
-        final amount = (hcePayload['amount'] as num).toDouble();
-
-        setState(() => _nfcStatus = 'Processing $amount BB...');
-        final auth = context.read<AuthService>();
-        await TransactionService().processNFCTransfer(nonce, amount, auth.user!.id);
-
-        setState(() { _nfcScanning = false; _nfcStatus = 'Received $amount BB!'; });
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Received $amount BB!'), backgroundColor: Colors.green));
-        return;
-      }
-
-      final jsonPayload = NFCService.decodeJsonPayload(data);
-      if (jsonPayload != null) {
-        final nonce = jsonPayload['nonce'] as String?;
-        final amount = (jsonPayload['amount'] as num?)?.toDouble() ?? 0;
-        if (nonce != null && amount > 0) {
-          setState(() => _nfcStatus = 'Processing $amount BB...');
-          final auth = context.read<AuthService>();
-          await TransactionService().processNFCTransfer(nonce, amount, auth.user!.id);
-          setState(() { _nfcScanning = false; _nfcStatus = 'Received $amount BB!'; });
-          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Received $amount BB!'), backgroundColor: Colors.green));
-          return;
-        }
-      }
-
-      setState(() { _nfcScanning = false; _nfcStatus = 'Unknown tag format. Try again.'; });
-    } catch (e) {
-      setState(() { _nfcScanning = false; _nfcStatus = 'Error: ${e.toString().substring(0, 30)}...'; });
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: Colors.red));
-    }
   }
 
   void _onQRScanned(BarcodeCapture capture) async {
@@ -108,15 +76,12 @@ class _ReceiveScreenState extends State<ReceiveScreen> with SingleTickerProvider
         await TransactionService().processQRTransfer(key, amount);
       }
 
-      _scannerController?.stop();
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Received $amount BB!'), backgroundColor: Colors.green));
         Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: Colors.red));
-      _scannerController?.start();
     } finally {
       setState(() => _qrScanning = false);
     }
@@ -124,9 +89,10 @@ class _ReceiveScreenState extends State<ReceiveScreen> with SingleTickerProvider
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _tabController.removeListener(_onTabChange);
     _tabController.dispose();
-    _scannerController?.dispose();
+    _scannerController.dispose();
     super.dispose();
   }
 
@@ -145,8 +111,6 @@ class _ReceiveScreenState extends State<ReceiveScreen> with SingleTickerProvider
   }
 
   Widget _buildQRTab() {
-    _scannerController ??= MobileScannerController();
-
     return Column(
       children: [
         Expanded(
@@ -183,7 +147,41 @@ class _ReceiveScreenState extends State<ReceiveScreen> with SingleTickerProvider
             const SizedBox(height: 24),
             if (_nfcAvailable)
               ElevatedButton.icon(
-                onPressed: _nfcScanning ? null : _startNFCScan,
+                onPressed: _nfcScanning ? null : () async {
+                  setState(() { _nfcScanning = true; _nfcStatus = 'Hold phone near sender...'; });
+                  try {
+                    final data = await NFCService.readNfcTag();
+                    if (data == null) {
+                      setState(() { _nfcScanning = false; _nfcStatus = 'No tag detected.'; });
+                      return;
+                    }
+                    final payload = NFCService.parseHcePayload(data);
+                    if (payload != null) {
+                      final ns = payload['nonce'] as String;
+                      final amt = (payload['amount'] as num).toDouble();
+                      final auth = context.read<AuthService>();
+                      await TransactionService().processNFCTransfer(ns, amt, auth.user!.id);
+                      setState(() { _nfcScanning = false; _nfcStatus = 'Received $amt BB!'; });
+                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Received $amt BB!'), backgroundColor: Colors.green));
+                      return;
+                    }
+                    final json = NFCService.decodeJsonPayload(data);
+                    if (json != null && json['nonce'] != null) {
+                      final ns = json['nonce'] as String;
+                      final amt = (json['amount'] as num?)?.toDouble() ?? 0;
+                      if (amt > 0) {
+                        final auth = context.read<AuthService>();
+                        await TransactionService().processNFCTransfer(ns, amt, auth.user!.id);
+                        setState(() { _nfcScanning = false; _nfcStatus = 'Received $amt BB!'; });
+                        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Received $amt BB!'), backgroundColor: Colors.green));
+                        return;
+                      }
+                    }
+                    setState(() { _nfcScanning = false; _nfcStatus = 'Unknown tag format.'; });
+                  } catch (e) {
+                    setState(() { _nfcScanning = false; _nfcStatus = 'Error: ${e.toString().substring(0, 30)}...'; });
+                  }
+                },
                 icon: _nfcScanning ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.nfc),
                 label: Text(_nfcScanning ? 'Scanning...' : 'Start NFC Scan'),
               ),
