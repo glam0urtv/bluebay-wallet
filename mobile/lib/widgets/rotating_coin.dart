@@ -3,8 +3,9 @@ import 'package:flutter/material.dart';
 
 class RotatingCoin extends StatefulWidget {
   final double? balance;
-
-  const RotatingCoin({super.key, this.balance});
+  final String? imageUrl;
+  final String? tokenName;
+  const RotatingCoin({super.key, this.balance, this.imageUrl, this.tokenName});
 
   @override
   State<RotatingCoin> createState() => _RotatingCoinState();
@@ -84,7 +85,7 @@ class _RotatingCoinState extends State<RotatingCoin>
                 Text(widget.balance != null ? widget.balance!.toStringAsFixed(0) : '...',
                   style: const TextStyle(fontSize: 52, fontWeight: FontWeight.w900, color: Colors.white, height: 1)),
                 const SizedBox(height: 2),
-                const Text('BLUEBAY TOKEN', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Color(0xFFA78BFA), letterSpacing: 1.5)),
+                Text(widget.tokenName ?? 'BLUEBAY TOKEN', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Color(0xFFA78BFA), letterSpacing: 1.5)),
               ]),
             ),
             Positioned(top: 145, child: _buildCoin(rad)),
@@ -126,7 +127,10 @@ class _RotatingCoinState extends State<RotatingCoin>
           children: [
             Container(width: 204, height: 204, decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: const Color(0xFFB8860B).withValues(alpha: 0.6), width: 2.5))),
             Container(width: 192, height: 192, decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: const Color(0xFFD4AF37).withValues(alpha: 0.35), width: 1.5))),
-            ClipOval(child: Image.asset('assets/images/bluebay.jpg', width: 148, height: 148, fit: BoxFit.cover)),
+            ClipOval(child: widget.imageUrl != null
+              ? Image.network(widget.imageUrl!, width: 148, height: 148, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Image.asset('assets/images/bluebay.jpg', width: 148, height: 148, fit: BoxFit.cover))
+              : Image.asset('assets/images/bluebay.jpg', width: 148, height: 148, fit: BoxFit.cover),
+            ),
             Container(width: 148, height: 148, decoration: BoxDecoration(shape: BoxShape.circle,
               gradient: RadialGradient(colors: [const Color(0xFFD4AF37).withValues(alpha: 0.12), const Color(0xFF8B6914).withValues(alpha: 0.25)]),
             )),

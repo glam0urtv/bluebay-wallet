@@ -27,6 +27,12 @@ export class WalletsController {
     return this.walletsService.getBalance(userId);
   }
 
+  @Get('me/balances')
+  @ApiOperation({ summary: 'Get all my token balances' })
+  getMyBalances(@CurrentUser('id') userId: string) {
+    return this.walletsService.getBalances(userId);
+  }
+
   @Get('me/transactions')
   @ApiOperation({ summary: 'Get my transaction history' })
   getMyTransactions(

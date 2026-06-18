@@ -16,22 +16,33 @@ class WalletScreen extends StatefulWidget {
 }
 
 class _WalletScreenState extends State<WalletScreen> {
-  double _balance = 0;
+  List<TokenBalance> _balances = [];
+  double _totalBalance = 0;
   bool _loading = true;
+  int _currentIndex = 0;
+  late PageController _pageController;
 
   @override
   void initState() {
     super.initState();
-    _loadBalance();
+    _pageController = PageController(viewportFraction: 0.85);
+    _loadBalances();
   }
 
-  Future<void> _loadBalance() async {
+  Future<void> _loadBalances() async {
     try {
-      final balance = await WalletService().getBalance();
-      if (mounted) setState(() { _balance = balance; _loading = false; });
+      final balances = await WalletService().getBalances();
+      final total = balances.fold<double>(0, (sum, b) => sum + b.balance);
+      if (mounted) setState(() { _balances = balances; _totalBalance = total; _loading = false; });
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
   }
 
   @override
@@ -39,171 +50,108 @@ class _WalletScreenState extends State<WalletScreen> {
     final auth = context.watch<AuthService>();
 
     return RefreshIndicator(
-      onRefresh: _loadBalance,
+      onRefresh: _loadBalances,
       child: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 20),
         children: [
           const SizedBox(height: 24),
 
-          Center(
-            child: Text(
-              auth.user?.fullName ?? '',
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-                color: Colors.grey,
-              ),
-            ),
-          ),
+          Center(child: Text(auth.user?.fullName ?? '', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.grey))),
           const SizedBox(height: 4),
 
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 24),
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF1E1B4B), Color(0xFF312E81), Color(0xFF1E1B4B)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF7C3AED).withValues(alpha: 0.3),
-                  blurRadius: 30,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
-            child: RotatingCoin(
-              balance: _loading ? null : _balance,
-            ),
-          ),
-          const SizedBox(height: 24),
+          if (_balances.length > 1) ...[
+            // Token page dots
+            Row(mainAxisAlignment: MainAxisAlignment.center, children: List.generate(_balances.length, (i) => AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: i == _currentIndex ? 20 : 6, height: 6,
+              margin: const EdgeInsets.symmetric(horizontal: 2),
+              decoration: BoxDecoration(borderRadius: BorderRadius.circular(3), color: i == _currentIndex ? Colors.white : Colors.white30),
+            ))),
+            const SizedBox(height: 8),
+          ],
 
+          // Coin carousel
+          SizedBox(
+            height: 380,
+            child: _loading
+                ? const Center(child: RotatingCoin(balance: null))
+                : _balances.isEmpty
+                    ? const Center(child: RotatingCoin(balance: 0))
+                    : PageView.builder(
+                        controller: _pageController,
+                        itemCount: _balances.length,
+                        onPageChanged: (i) => setState(() => _currentIndex = i),
+                        itemBuilder: (_, i) {
+                          final b = _balances[i];
+                          final imgUrl = b.iconUrl != null && b.iconUrl!.isNotEmpty ? b.iconUrl! : null;
+                          // If remote URL, prepend base URL
+                          final fullImgUrl = imgUrl != null && !imgUrl.startsWith('http')
+                              ? 'https://tropical-primp-dingo.ngrok-free.dev/$imgUrl'
+                              : imgUrl;
+                          return RotatingCoin(
+                            balance: b.balance,
+                            imageUrl: fullImgUrl,
+                            tokenName: '${b.name} (${b.symbol})',
+                          );
+                        },
+                      ),
+          ),
+
+          if (_balances.isNotEmpty && _balances.length > 1)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text('Total: ${_totalBalance.toStringAsFixed(0)} BB', textAlign: TextAlign.center,
+                style: const TextStyle(color: Color(0xFFA78BFA), fontSize: 13))),
+
+          const SizedBox(height: 8),
+
+          // Quick actions
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: _QuickAction(
-                        icon: Icons.send_rounded,
-                        label: 'Send',
-                        color: const Color(0xFF3B82F6),
-                        onTap: () {
-                          Navigator.of(context)
-                              .push(MaterialPageRoute(builder: (_) => const SendScreen()))
-                              .then((_) => _loadBalance());
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _QuickAction(
-                        icon: Icons.store_rounded,
-                        label: 'Shop',
-                        color: const Color(0xFF7C3AED),
-                        onTap: () async {
-                          final result = await Navigator.of(context).push(
-                            MaterialPageRoute(builder: (_) => const MerchantListScreen()),
-                          );
-                          if (result != null && mounted) {
-                            Navigator.of(context).push(MaterialPageRoute(
-                              builder: (_) => SendScreen(
-                                lockedMerchantId: result['userId'],
-                                lockedMerchantName: result['name'],
-                                lockedMerchantRate: (result['rate'] as num).toDouble(),
-                              ),
-                            )).then((_) => _loadBalance());
-                          }
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _QuickAction(
-                        icon: Icons.qr_code_scanner_rounded,
-                        label: 'Receive',
-                        color: const Color(0xFF10B981),
-                        onTap: () {
-                          Navigator.of(context)
-                              .push(MaterialPageRoute(builder: (_) => const ReceiveScreen()))
-                              .then((_) => _loadBalance());
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _QuickAction(
-                        icon: Icons.receipt_long_rounded,
-                        label: 'History',
-                        color: const Color(0xFFF59E0B),
-                        onTap: () {
-                          Navigator.of(context).push(MaterialPageRoute(
-                              builder: (_) => const TransactionHistoryScreen()));
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+            child: Column(children: [
+              Row(children: [
+                Expanded(child: _btn('Send', Icons.send_rounded, const Color(0xFF3B82F6), () {
+                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SendScreen())).then((_) => _loadBalances());
+                })),
+                const SizedBox(width: 10),
+                Expanded(child: _btn('Shop', Icons.store_rounded, const Color(0xFF7C3AED), () async {
+                  final result = await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MerchantListScreen()));
+                  if (result != null && mounted) {
+                    Navigator.of(context).push(MaterialPageRoute(builder: (_) => SendScreen(
+                      lockedMerchantId: result['userId'], lockedMerchantName: result['name'], lockedMerchantRate: (result['rate'] as num).toDouble(),
+                    ))).then((_) => _loadBalances());
+                  }
+                })),
+              ]),
+              const SizedBox(height: 10),
+              Row(children: [
+                Expanded(child: _btn('Receive', Icons.qr_code_scanner_rounded, const Color(0xFF10B981), () {
+                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ReceiveScreen())).then((_) => _loadBalances());
+                })),
+                const SizedBox(width: 10),
+                Expanded(child: _btn('History', Icons.receipt_long_rounded, const Color(0xFFF59E0B), () {
+                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TransactionHistoryScreen()));
+                })),
+              ]),
+            ]),
           ),
           const SizedBox(height: 24),
         ],
       ),
     );
   }
-}
 
-class _QuickAction extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _QuickAction({
-    required this.icon,
-    required this.label,
-    required this.color,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _btn(String label, IconData icon, Color color, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 18),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: color.withValues(alpha: 0.15),
-            width: 1,
-          ),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: color, size: 26),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              style: TextStyle(
-                color: color,
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-              ),
-            ),
-          ],
-        ),
+        decoration: BoxDecoration(color: color.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(16), border: Border.all(color: color.withValues(alpha: 0.15))),
+        child: Column(children: [
+          Icon(icon, color: color, size: 26),
+          const SizedBox(height: 8),
+          Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 13)),
+        ]),
       ),
     );
   }

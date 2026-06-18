@@ -43,6 +43,23 @@ model Wallet {
   user                 User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   sentTransactions     Transaction[] @relation("TxFromWallet")
   receivedTransactions Transaction[] @relation("TxToWallet")
+  balances             WalletBalance[]
+}
+
+model WalletBalance {
+  id        String   @id @default(uuid())
+  walletId  String
+  tokenId   String
+  balance   Float    @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  token  Token  @relation(fields: [tokenId], references: [id])
+
+  @@unique([walletId, tokenId])
+  @@index([walletId])
+  @@index([tokenId])
 }
 
 model Token {
@@ -57,6 +74,7 @@ model Token {
 
   admin        User          @relation(fields: [createdBy], references: [id])
   transactions Transaction[]
+  balances     WalletBalance[]
 
   @@index([symbol])
 }

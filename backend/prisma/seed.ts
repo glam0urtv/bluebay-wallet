@@ -13,10 +13,7 @@ async function main() {
     where: { phone: '+1000000000' },
     update: {},
     create: {
-      phone: '+1000000000',
-      fullName: 'System Admin',
-      pinHash: adminPinHash,
-      role: 'admin',
+      phone: '+1000000000', fullName: 'System Admin', pinHash: adminPinHash, role: 'admin',
       wallet: { create: { balance: 0 } },
     },
   });
@@ -25,93 +22,50 @@ async function main() {
     where: { symbol: 'BB' },
     update: {},
     create: {
-      name: 'BlueBay Token',
-      symbol: 'BB',
+      name: 'BlueBay Token', symbol: 'BB',
       description: 'Official loyalty token for BlueBay ecosystem',
+      iconUrl: 'assets/images/bluebay.jpg',
       createdBy: admin.id,
     },
   });
 
-  const employee1 = await prisma.user.upsert({
-    where: { phone: '+1000000001' },
-    update: {},
-    create: {
-      phone: '+1000000001',
-      fullName: 'Maria Papadopoulou',
-      pinHash: userPinHash,
-      role: 'user',
-      wallet: { create: { balance: 100 } },
-    },
-  });
+  async function createUser(phone: string, fullName: string, role: string, bbBalance: number) {
+    const u = await prisma.user.upsert({
+      where: { phone },
+      update: {},
+      create: {
+        phone, fullName, pinHash: userPinHash, role,
+        wallet: { create: { balance: bbBalance } },
+      },
+    });
+    const wallet = await prisma.wallet.findUnique({ where: { userId: u.id } });
+    if (wallet) {
+      await prisma.walletBalance.upsert({
+        where: { walletId_tokenId: { walletId: wallet.id, tokenId: bbToken.id } },
+        create: { walletId: wallet.id, tokenId: bbToken.id, balance: bbBalance },
+        update: { balance: bbBalance },
+      });
+    }
+    return u;
+  }
 
-  const employee2 = await prisma.user.upsert({
-    where: { phone: '+1000000002' },
-    update: {},
-    create: {
-      phone: '+1000000002',
-      fullName: 'Nikos Georgiou',
-      pinHash: userPinHash,
-      role: 'user',
-      wallet: { create: { balance: 50 } },
-    },
-  });
+  await createUser('+1000000001', 'Maria Papadopoulou', 'user', 1970);
+  await createUser('+1000000002', 'Nikos Georgiou', 'user', 65);
 
-  const merchantUser = await prisma.user.upsert({
-    where: { phone: '+1000000003' },
-    update: {},
-    create: {
-      phone: '+1000000003',
-      fullName: 'BlueBay Coffee Shop',
-      pinHash: userPinHash,
-      role: 'merchant',
-      wallet: { create: { balance: 0 } },
-    },
-  });
-
+  const m1 = await createUser('+1000000003', 'BlueBay Coffee Shop', 'merchant', 0);
   await prisma.merchant.upsert({
-    where: { userId: merchantUser.id },
-    update: {},
-    create: {
-      userId: merchantUser.id,
-      businessName: 'BlueBay Coffee Shop',
-      businessCategory: 'Cafe',
-      conversionRate: 0.5,
-    },
+    where: { userId: m1.id }, update: {}, create: { userId: m1.id, businessName: 'BlueBay Coffee Shop', businessCategory: 'Cafe', conversionRate: 0.5 },
   });
 
-  const merchant2User = await prisma.user.upsert({
-    where: { phone: '+1000000004' },
-    update: {},
-    create: {
-      phone: '+1000000004',
-      fullName: 'BlueBay Gadgets',
-      pinHash: userPinHash,
-      role: 'merchant',
-      wallet: { create: { balance: 0 } },
-    },
-  });
-
+  const m2 = await createUser('+1000000004', 'BlueBay Gadgets', 'merchant', 0);
   await prisma.merchant.upsert({
-    where: { userId: merchant2User.id },
-    update: {},
-    create: {
-      userId: merchant2User.id,
-      businessName: 'BlueBay Gadgets',
-      businessCategory: 'Electronics',
-      conversionRate: 0.75,
-    },
+    where: { userId: m2.id }, update: {}, create: { userId: m2.id, businessName: 'BlueBay Gadgets', businessCategory: 'Electronics', conversionRate: 0.75 },
   });
 
   console.log('Seed complete!');
-  console.log('---');
-  console.log('Token:   BlueBay Token (BB)');
-  console.log('Admin:   phone=+1000000000 pin=123456');
-  console.log('User 1:  phone=+1000000001 pin=123456 (balance: 100 BB)');
-  console.log('User 2:  phone=+1000000002 pin=123456 (balance: 50 BB)');
-  console.log('Merchant: phone=+1000000003 pin=123456 (BlueBay Coffee Shop)');
-  console.log('Merchant: phone=+1000000004 pin=123456 (BlueBay Gadgets)');
+  console.log('Token: BlueBay Token (BB) with wallet balances');
+  console.log('Admin: +1000000000 | User1: +1000000001 | User2: +1000000002');
+  console.log('Merchant1: +1000000003 (Coffee) | Merchant2: +1000000004 (Gadgets)');
 }
 
-main()
-  .catch((e) => { console.error(e); process.exit(1); })
-  .finally(async () => { await prisma.$disconnect(); });
+main().catch((e) => { console.error(e); process.exit(1); }).finally(async () => { await prisma.$disconnect(); });
